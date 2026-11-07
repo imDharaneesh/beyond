@@ -43,6 +43,7 @@ namespace Beyond.World
             if (target != null) target.intensity = baseIntensity * k;
             if (emissive != null)
             {
+                if (block == null) block = new MaterialPropertyBlock();
                 emissive.GetPropertyBlock(block);
                 block.SetColor(EmissionId, emissionColor * k);
                 emissive.SetPropertyBlock(block);

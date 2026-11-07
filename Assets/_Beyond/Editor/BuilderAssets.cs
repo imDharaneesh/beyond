@@ -108,7 +108,19 @@ namespace Beyond.EditorTools
             return mesh;
         }
 
+        static readonly Dictionary<string, Mesh[]> modelCache = new Dictionary<string, Mesh[]>();
+
+        public static void ResetCache() => modelCache.Clear();
+
         public static Mesh[] ModelMeshes(string asset)
+        {
+            if (modelCache.TryGetValue(asset, out var cached) && cached.All(m => m != null)) return cached;
+            var meshes = LoadModelMeshes(asset);
+            modelCache[asset] = meshes;
+            return meshes;
+        }
+
+        static Mesh[] LoadModelMeshes(string asset)
         {
             string path = $"{PolyHaven}/Models/{asset}/{asset}.fbx";
             var importer = AssetImporter.GetAtPath(path) as ModelImporter;

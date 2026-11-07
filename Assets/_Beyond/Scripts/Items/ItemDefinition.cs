@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Beyond.Items
 {
-    public enum ItemCategory { Resource, Component, Tool, Artifact }
+    public enum ItemCategory { Resource, Component, Tool, Artifact, Clothing }
 
     [CreateAssetMenu(menuName = "Beyond/Item", fileName = "Item")]
     public class ItemDefinition : ScriptableObject

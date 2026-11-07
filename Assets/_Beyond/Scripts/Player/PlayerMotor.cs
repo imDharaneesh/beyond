@@ -24,6 +24,7 @@ namespace Beyond.Player
         [SerializeField] Transform bodyVisual;
 
         [Header("Stamina")]
+        [SerializeField] bool unlimitedStamina = true;
         [SerializeField] float maxStamina = 100f;
         [SerializeField] float sprintDrain = 16f;
         [SerializeField] float staminaRegen = 12f;
@@ -120,6 +121,12 @@ namespace Beyond.Player
 
         void UpdateStamina(float dt)
         {
+            if (unlimitedStamina)
+            {
+                stamina = maxStamina;
+                exhausted = false;
+                return;
+            }
             if (IsSprinting)
             {
                 stamina = Mathf.Max(0f, stamina - sprintDrain * dt);

@@ -42,7 +42,7 @@ namespace Beyond.Player
             input = GetComponent<PlayerInputReader>();
             if (cameraTransform == null && Camera.main != null) cameraTransform = Camera.main.transform;
             if (hideInFirstPerson == null || hideInFirstPerson.Length == 0)
-                hideInFirstPerson = GetComponentsInChildren<Renderer>();
+                hideInFirstPerson = GetComponentsInChildren<Renderer>(true);
 
             Yaw = transform.eulerAngles.y;
             Pitch = 10f;

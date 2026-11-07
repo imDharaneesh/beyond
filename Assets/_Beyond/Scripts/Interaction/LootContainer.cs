@@ -12,6 +12,9 @@ namespace Beyond.Interaction
         [SerializeField] Vector3 lidOpenEuler = new Vector3(110f, 0f, 0f);
 
         bool opened;
+
+        public bool IsOpened => opened;
+        public string ContainerName => containerName;
         Quaternion lidClosed;
         float lidT;
 

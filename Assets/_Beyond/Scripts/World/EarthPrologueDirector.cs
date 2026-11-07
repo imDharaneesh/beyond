@@ -36,7 +36,8 @@ namespace Beyond.World
             if (transmissionLog != null) transmissionLog.gameObject.SetActive(false);
 
             step = Step.FindCamp;
-            Objectives.Set("Find the abandoned expedition camp", "Follow the dirt trail north-east");
+            Objectives.Set("Find the abandoned expedition camp", "Follow the dirt trail north-east", campZone.transform.position);
+            Messages.Post("You wake at the trailhead in your underwear. Your gear must be somewhere nearby.");
         }
 
         void OnDestroy()
@@ -50,7 +51,7 @@ namespace Beyond.World
             if (step != Step.FindCamp) return;
             step = Step.RepairRadio;
             Messages.Post("Discovered: Meridian Expedition Camp");
-            Objectives.Set("Repair the camp radio", "");
+            Objectives.Set("Repair the camp radio", "", radio.transform.position);
             RefreshProgress();
         }
 
@@ -65,7 +66,7 @@ namespace Beyond.World
             step = Step.ReadTransmission;
             Messages.Post("Radio repaired - a transmission log was recovered");
             if (transmissionLog != null) transmissionLog.gameObject.SetActive(true);
-            Objectives.Set("Read the recovered transmission", "It's printing at the radio table");
+            Objectives.Set("Read the recovered transmission", "It's printing at the radio table", transmissionLog != null ? transmissionLog.transform.position : radio.transform.position);
         }
 
         void OnNoteOpened(JournalNote note)

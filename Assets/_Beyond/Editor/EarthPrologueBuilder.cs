@@ -21,6 +21,7 @@ namespace Beyond.EditorTools
         const float MaxHeight = 60f;
         const int HeightRes = 513;
         const int SplatRes = 512;
+        const int DetailRes = 640;
         const float CampRadius = 16f;
         const int IgnoreRaycastLayer = 2;
 
@@ -33,6 +34,7 @@ namespace Beyond.EditorTools
         static readonly Vector2 Camp = new Vector2(244f, 236f);
 
         static Terrain terrain;
+        static float[,,] splat;
         static System.Random rng;
         static readonly List<(Vector2 centre, float radius)> clearings = new List<(Vector2, float)>();
         static readonly Dictionary<string, Material> materials = new Dictionary<string, Material>();
@@ -66,9 +68,12 @@ namespace Beyond.EditorTools
             clearings.Clear();
             materials.Clear();
             items.Clear();
+            PropLibrary.ClearCache();
+            BuilderAssets.ResetCache();
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
+            ConfigurePipeline();
             CreateItems();
             var sun = BuildLighting();
             BuildTerrain();
@@ -76,16 +81,19 @@ namespace Beyond.EditorTools
             var world = new GameObject("World").transform;
             var gameplay = new GameObject("Gameplay").transform;
 
-            var camp = BuildCamp(world, gameplay, out var zone, out var radio, out var transmission);
+            BuildCamp(world, gameplay, out var zone, out var radio, out var transmission);
             BuildTrail(world, gameplay);
             BuildForest(world);
             BuildRocks(world);
+            BuildUndergrowth(world);
+            PaintDetails();
 
             var cam = BuildCamera();
             BuildPlayer(cam);
 
             var hud = new GameObject("HUD");
             hud.AddComponent<GameHud>();
+            hud.AddComponent<NavigationHud>();
 
             var director = new GameObject("Earth Prologue Director").AddComponent<EarthPrologueDirector>();
             director.Configure(zone, radio, transmission);
@@ -94,9 +102,39 @@ namespace Beyond.EditorTools
 
             BuilderAssets.EnsureFolder(BuilderAssets.Root + "/Scenes");
             EditorSceneManager.SaveScene(scene, ScenePath);
+            BakeEnvironment(scene);
             AddToBuildSettings();
             AssetDatabase.SaveAssets();
             Debug.Log($"[Beyond] Earth prologue scene built at {ScenePath}");
+        }
+
+        static void ConfigurePipeline()
+        {
+            var urp = (QualitySettings.renderPipeline ?? GraphicsSettings.defaultRenderPipeline) as UniversalRenderPipelineAsset;
+            if (urp == null) return;
+            urp.shadowDistance = 130f;
+            urp.shadowCascadeCount = 4;
+            urp.cascade4Split = new Vector3(0.05f, 0.14f, 0.38f);
+            var so = new SerializedObject(urp);
+            var res = so.FindProperty("m_MainLightShadowmapResolution");
+            if (res != null) res.intValue = 4096;
+            var soft = so.FindProperty("m_SoftShadowQuality");
+            if (soft != null) soft.intValue = 3;
+            var hdr = so.FindProperty("m_SupportsHDR");
+            if (hdr != null) hdr.boolValue = true;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(urp);
+        }
+
+        static void BakeEnvironment(UnityEngine.SceneManagement.Scene scene)
+        {
+            string path = $"{BuilderAssets.Generated}/Settings/EarthPrologue_Lighting.lighting";
+            AssetDatabase.DeleteAsset(path);
+            var settings = new LightingSettings { name = "EarthPrologue_Lighting", bakedGI = false, realtimeGI = false };
+            AssetDatabase.CreateAsset(settings, path);
+            Lightmapping.SetLightingSettingsForScene(scene, settings);
+            Lightmapping.Bake();
+            EditorSceneManager.SaveScene(scene, ScenePath);
         }
 
         static void AddToBuildSettings()
@@ -114,6 +152,9 @@ namespace Beyond.EditorTools
             AddItem("circuit_board", "Radio Circuit Board", "Transmitter board pulled from the camp radio.", ItemCategory.Component, new Color(0.1f, 0.5f, 0.25f));
             AddItem("multitool", "Field Multitool", "Pliers, screwdrivers and a blade. Every engineer's best friend.", ItemCategory.Tool, new Color(0.8f, 0.12f, 0.1f));
             AddItem("meridian_badge", "Meridian Insignia", "A brass patch: a crescent moon over a rising arrow.", ItemCategory.Artifact, new Color(0.85f, 0.68f, 0.3f));
+            AddItem("leather_boots", "Leather Boots", "Sturdy black boots. Your feet will thank you.", ItemCategory.Clothing, new Color(0.08f, 0.07f, 0.06f));
+            AddItem("field_jeans", "Field Jeans", "Worn denim with deep pockets.", ItemCategory.Clothing, new Color(0.22f, 0.34f, 0.52f));
+            AddItem("field_jacket", "Field Jacket", "An olive expedition jacket over a flannel shirt.", ItemCategory.Clothing, new Color(0.22f, 0.26f, 0.2f));
         }
 
         static void AddItem(string id, string name, string desc, ItemCategory cat, Color tint) =>
@@ -141,30 +182,32 @@ namespace Beyond.EditorTools
             var sunGo = new GameObject("Sun");
             var sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
-            sun.intensity = 2.1f;
-            sun.color = new Color(1f, 0.94f, 0.84f);
+            sun.intensity = 2.4f;
+            sun.color = new Color(1f, 0.92f, 0.8f);
             sun.shadows = LightShadows.Soft;
-            sunGo.transform.rotation = Quaternion.Euler(36f, 215f, 0f);
+            sun.shadowStrength = 0.92f;
+            sun.shadowNormalBias = 0.6f;
+            sunGo.transform.rotation = Quaternion.Euler(31f, 212f, 0f);
 
             var hdr = BuilderAssets.LoadTexture($"{BuilderAssets.PolyHaven}/HDRI/kloofendal_48d_partly_cloudy_puresky.hdr", false, 4096);
             var sky = new Material(Shader.Find("Skybox/Panoramic")) { name = "Sky_Kloofendal" };
             sky.SetTexture("_MainTex", hdr);
             sky.SetFloat("_Mapping", 1f);
             sky.SetFloat("_ImageType", 0f);
-            sky.SetFloat("_Exposure", 1.1f);
+            sky.SetFloat("_Exposure", 1.05f);
             sky.SetFloat("_Rotation", 40f);
             sky = BuilderAssets.SaveAsset(sky, $"{BuilderAssets.Generated}/Materials/Sky_Kloofendal.mat");
             RenderSettings.skybox = sky;
 
-            RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.62f, 0.72f, 0.88f) * 1.05f;
-            RenderSettings.ambientEquatorColor = new Color(0.5f, 0.53f, 0.5f);
-            RenderSettings.ambientGroundColor = new Color(0.24f, 0.22f, 0.17f);
+            RenderSettings.ambientMode = AmbientMode.Skybox;
+            RenderSettings.ambientIntensity = 1.0f;
+            RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
+            RenderSettings.reflectionIntensity = 0.8f;
 
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogDensity = 0.0042f;
-            RenderSettings.fogColor = new Color(0.7f, 0.76f, 0.82f);
+            RenderSettings.fogDensity = 0.0055f;
+            RenderSettings.fogColor = new Color(0.64f, 0.72f, 0.8f);
 
             BuildPostProcessing();
             return sun;
@@ -181,18 +224,24 @@ namespace Beyond.EditorTools
             var tone = profile.Add<Tonemapping>(true);
             tone.mode.Override(TonemappingMode.ACES);
             var bloom = profile.Add<Bloom>(true);
-            bloom.threshold.Override(1.1f);
-            bloom.intensity.Override(0.35f);
-            bloom.scatter.Override(0.6f);
+            bloom.threshold.Override(1.2f);
+            bloom.intensity.Override(0.25f);
+            bloom.scatter.Override(0.65f);
             var color = profile.Add<ColorAdjustments>(true);
-            color.postExposure.Override(0.35f);
-            color.contrast.Override(12f);
-            color.saturation.Override(6f);
+            color.postExposure.Override(0.2f);
+            color.contrast.Override(16f);
+            color.saturation.Override(-4f);
             color.colorFilter.Override(Color.white);
             color.hueShift.overrideState = false;
+            var white = profile.Add<WhiteBalance>(true);
+            white.temperature.Override(4f);
+            white.tint.Override(2f);
+            var smh = profile.Add<ShadowsMidtonesHighlights>(true);
+            smh.shadows.Override(new Vector4(0.96f, 1f, 1.06f, 0f));
+            smh.highlights.Override(new Vector4(1.04f, 1f, 0.95f, 0f));
             var vignette = profile.Add<Vignette>(true);
-            vignette.intensity.Override(0.22f);
-            vignette.smoothness.Override(0.45f);
+            vignette.intensity.Override(0.2f);
+            vignette.smoothness.Override(0.5f);
 
             foreach (var c in profile.components) AssetDatabase.AddObjectToAsset(c, profile);
             EditorUtility.SetDirty(profile);
@@ -221,7 +270,7 @@ namespace Beyond.EditorTools
 
             data.terrainLayers = new[]
             {
-                Layer("leafy_grass", 4f, new Color(0.78f, 0.92f, 0.62f)), Layer("forest_leaves_02", 3f), Layer("dirt_floor", 3f), Layer("mossy_rock", 6f)
+                Layer("leafy_grass", 4f, new Color(0.78f, 0.92f, 0.62f)), Layer("forest_leaves_02", 3f), Layer("dirt_floor", 3f, new Color(0.62f, 0.55f, 0.47f)), Layer("mossy_rock", 6f)
             };
             data.alphamapResolution = SplatRes;
 
@@ -271,7 +320,7 @@ namespace Beyond.EditorTools
 
                 float rock = Smooth(24f, 36f, steep + n * 6f);
                 float dirt = Mathf.Max(1f - Smooth(0.7f, 2.1f, TrailDistance(wx, wz) + (n - 0.5f) * 1.6f),
-                    1f - Smooth(CampRadius * 0.3f, CampRadius * 0.6f, Vector2.Distance(new Vector2(wx, wz), Camp) + (n - 0.5f) * 5f));
+                    1f - Smooth(CampRadius * 0.2f, CampRadius * 0.5f, Vector2.Distance(new Vector2(wx, wz), Camp) + (n - 0.5f) * 5f));
                 float leavesMask = Smooth(0.42f, 0.62f, Mathf.PerlinNoise(wx * 0.025f + 11f, wz * 0.025f + 5f));
 
                 float rest = 1f - rock;
@@ -286,7 +335,76 @@ namespace Beyond.EditorTools
                 maps[z, x, 3] = rock;
             }
             data.SetAlphamaps(0, 0, maps);
+            splat = maps;
         }
+
+        static void PaintDetails()
+        {
+            var data = terrain.terrainData;
+            var grassA = FoliageBuilder.GrassMaterial("Grass A", new Color(0.82f, 0.9f, 0.72f));
+            var grassB = FoliageBuilder.GrassMaterial("Grass B", new Color(0.92f, 0.9f, 0.68f));
+            var fern = FoliageBuilder.FernMaterial();
+
+            var prototypes = new[]
+            {
+                Detail(FoliageBuilder.DetailPrefab("Detail_GrassA", FoliageBuilder.GrassClump(3, false), grassA), 0.8f, 1.3f),
+                Detail(FoliageBuilder.DetailPrefab("Detail_GrassB", FoliageBuilder.GrassClump(8, false), grassB), 0.8f, 1.25f),
+                Detail(FoliageBuilder.DetailPrefab("Detail_GrassTall", FoliageBuilder.GrassClump(5, true), grassA), 0.75f, 1.2f),
+                Detail(FoliageBuilder.DetailPrefab("Detail_FernA", FoliageBuilder.Fern(2), fern), 0.7f, 1.3f),
+                Detail(FoliageBuilder.DetailPrefab("Detail_FernB", FoliageBuilder.Fern(9), fern), 0.7f, 1.2f)
+            };
+            data.SetDetailScatterMode(DetailScatterMode.InstanceCountMode);
+            data.SetDetailResolution(DetailRes, 32);
+            data.detailPrototypes = prototypes;
+
+            var layers = new int[prototypes.Length][,];
+            for (int i = 0; i < layers.Length; i++) layers[i] = new int[DetailRes, DetailRes];
+            var r = new System.Random(77);
+            for (int z = 0; z < DetailRes; z++)
+            for (int x = 0; x < DetailRes; x++)
+            {
+                int sx = Mathf.Min(SplatRes - 1, x * SplatRes / DetailRes);
+                int sz = Mathf.Min(SplatRes - 1, z * SplatRes / DetailRes);
+                float grass = splat[sz, sx, 0];
+                float leaves = splat[sz, sx, 1];
+                float wx = (x + 0.5f) / DetailRes * Size, wz = (z + 0.5f) / DetailRes * Size;
+                float patch = Mathf.PerlinNoise(wx * 0.08f + 19f, wz * 0.08f + 41f);
+                float tallPatch = Mathf.PerlinNoise(wx * 0.05f + 3f, wz * 0.05f + 77f);
+                if (Vector2.Distance(new Vector2(wx, wz), Camp) < CampRadius * 0.4f) continue;
+
+                float lush = grass + leaves * 0.35f;
+                float grassCount = lush * (0.5f + patch * 1.9f);
+                int total = Mathf.FloorToInt(grassCount + (float)r.NextDouble());
+                for (int i = 0; i < total; i++)
+                {
+                    double pick = r.NextDouble();
+                    int layer = tallPatch > 0.6f && pick < 0.35 ? 2 : pick < 0.6 ? 0 : 1;
+                    layers[layer][z, x]++;
+                }
+                float fernChance = leaves * 0.22f * Smooth(0.35f, 0.7f, patch) + grass * 0.015f;
+                if (r.NextDouble() < fernChance) layers[r.NextDouble() < 0.5 ? 3 : 4][z, x] = 1;
+            }
+            for (int i = 0; i < layers.Length; i++) data.SetDetailLayer(0, 0, i, layers[i]);
+
+            terrain.detailObjectDistance = 85f;
+            terrain.detailObjectDensity = 1f;
+            EditorUtility.SetDirty(data);
+        }
+
+        static DetailPrototype Detail(GameObject prefab, float min, float max) => new DetailPrototype
+        {
+            prototype = prefab,
+            usePrototypeMesh = true,
+            useInstancing = true,
+            renderMode = DetailRenderMode.VertexLit,
+            minWidth = min,
+            maxWidth = max,
+            minHeight = min,
+            maxHeight = max,
+            noiseSpread = 0.4f,
+            positionJitter = 1f,
+            alignToGround = 0.25f
+        };
 
         static float HeightAt(float x, float z)
         {
@@ -297,10 +415,10 @@ namespace Beyond.EditorTools
             float baseH = 0.06f + Mathf.PerlinNoise(x * 0.0035f + 5f, z * 0.0035f + 9f) * 0.05f;
 
             float edgeDist = Mathf.Min(Mathf.Min(x, z), Mathf.Min(Size - x, Size - z));
-            float edge = Mathf.Clamp01((32f - edgeDist) / 30f);
+            float edge = Mathf.Clamp01((48f - edgeDist) / 46f);
             edge = edge * edge * (0.55f + 0.45f * Fbm(x * 0.02f, z * 0.02f, 3));
 
-            return baseH + hills * Mathf.Lerp(0.12f, 1f, mask) + detail * Mathf.Lerp(0.3f, 1f, mask) + edge * 0.8f;
+            return baseH + hills * Mathf.Lerp(0.12f, 1f, mask) + detail * Mathf.Lerp(0.3f, 1f, mask) + edge * 0.42f;
         }
 
         static float Fbm(float x, float z, int octaves)
@@ -424,35 +542,52 @@ namespace Beyond.EditorTools
             fireLight.gameObject.AddComponent<LightAnimator>().Configure(LightAnimator.Mode.Flicker, fireLight,
                 ember.GetComponent<Renderer>(), new Color(2.5f, 0.7f, 0.15f), 1f);
 
-            var bark = Mat("Bark", new Color(0.32f, 0.24f, 0.17f), 0.1f);
-            for (int i = 0; i < 3; i++)
+            var logMeshes = BuilderAssets.ModelMeshes("dead_tree_trunk");
+            var logMat = PhMat("Models", "dead_tree_trunk");
+            for (int i = 0; i < 3 && logMeshes.Length > 0; i++)
             {
                 float a = i * 120f + 20f;
-                Vector2 lp = Camp + new Vector2(Mathf.Sin(a * Mathf.Deg2Rad), Mathf.Cos(a * Mathf.Deg2Rad)) * 2.3f;
-                var log = Anchor("Log Seat", camp, lp, a + 90f, 0.18f);
-                Primitive(PrimitiveType.Cylinder, "Log", log, Vector3.zero, new Vector3(0.36f, 0.9f, 0.36f), bark,
-                    Quaternion.Euler(0f, 0f, 90f), true);
+                Vector2 lp = Camp + new Vector2(Mathf.Sin(a * Mathf.Deg2Rad), Mathf.Cos(a * Mathf.Deg2Rad)) * 2.5f;
+                PlaceModel("Log Seat", camp, logMeshes[0], logMat, lp, a, 0.72f, 0.03f, true);
             }
+            var hatchet = PropLibrary.Spawn(PropLibrary.Load("hatchet"), "Hatchet", camp, false);
+            hatchet.transform.SetPositionAndRotation(OnGround(Camp + new Vector2(1.6f, -1.9f), 0.01f), Quaternion.Euler(0f, 35f, 90f));
 
             var tent = Anchor("Tent", camp, Camp + new Vector2(-7f, 5f), 120f);
             var tentMesh = BuilderAssets.SaveMesh(TentMesh(2.4f, 1.65f, 3f));
-            MeshObject("Canvas", tent, tentMesh, new[] { Mat("Tent Canvas", new Color(0.36f, 0.38f, 0.24f), 0.1f) }, true);
+            var canvas = PropLibrary.Pbr("Tent Canvas", $"{BuilderAssets.PolyHaven}/Textures/rough_linen", "rough_linen",
+                new Color(0.62f, 0.64f, 0.46f), new Vector2(1.6f, 1.6f));
+            MeshObject("Canvas", tent, tentMesh, new[] { canvas }, true);
 
-            var hale = Anchor("Hale's Crate", tent, Vector2.zero, 0f);
-            hale.localPosition = new Vector3(0.3f, 0f, 0.6f);
-            hale.localRotation = Quaternion.Euler(0f, 180f, 0f);
-            Crate("Hale's Equipment Case", hale, gameplay, new List<ItemStack> { new ItemStack(items["circuit_board"], 1) }, true);
+            var hale = Anchor("Hale's Case", tent, Vector2.zero, 0f);
+            hale.localPosition = new Vector3(0.25f, 0f, 0.55f);
+            hale.localRotation = Quaternion.Euler(0f, 170f, 0f);
+            LootProp("Hale's Equipment Case", PropLibrary.Load("vintage_suitcase", n => n.Contains("_01"), n => n.Contains("_top"), "_01"),
+                hale, new List<ItemStack> { new ItemStack(items["circuit_board"], 1) }, new Vector3(-100f, 0f, 0f));
+
+            PlaceProp("medical_box", "Medical Box", camp, Camp + new Vector2(-4.6f, 6.8f), 75f);
+            PlaceProp("metal_toolbox", "Toolbox", camp, Camp + new Vector2(-5.2f, 2.6f), 20f);
 
             var table = Anchor("Radio Table", camp, Camp + new Vector2(6f, -3f), 250f);
-            var wood = Mat("Table Wood", new Color(0.45f, 0.33f, 0.22f), 0.25f);
-            Primitive(PrimitiveType.Cube, "Top", table, new Vector3(0f, 0.78f, 0f), new Vector3(1.7f, 0.05f, 0.85f), wood, null, true);
-            for (int i = 0; i < 4; i++)
-                Primitive(PrimitiveType.Cube, "Leg", table, new Vector3(i % 2 == 0 ? -0.78f : 0.78f, 0.38f, i < 2 ? -0.36f : 0.36f),
-                    new Vector3(0.06f, 0.76f, 0.06f), wood);
+            var tableProp = PropLibrary.Load("wooden_picnic_table");
+            PropLibrary.Spawn(tableProp, "Picnic Table", table);
+            float top = tableProp.bounds.size.y;
+            Vector3 along = tableProp.bounds.size.x >= tableProp.bounds.size.z ? Vector3.right : Vector3.forward;
 
-            radio = BuildRadio(table);
+            radio = BuildRadio(table, top);
 
-            var logPaper = NotePaper(table, new Vector3(0.5f, 0.81f, 0.05f), 25f);
+            var lantern = PropLibrary.Spawn(PropLibrary.Load("wooden_lantern_01"), "Lantern", table, false);
+            lantern.transform.localPosition = along * -0.75f + Vector3.up * top;
+            var lanternLight = new GameObject("Lantern Light").AddComponent<Light>();
+            lanternLight.transform.SetParent(lantern.transform, false);
+            lanternLight.transform.localPosition = new Vector3(0f, 0.2f, 0f);
+            lanternLight.type = LightType.Point;
+            lanternLight.color = new Color(1f, 0.68f, 0.35f);
+            lanternLight.intensity = 1.6f;
+            lanternLight.range = 4f;
+            lanternLight.gameObject.AddComponent<LightAnimator>().Configure(LightAnimator.Mode.Flicker, lanternLight, null, Color.black, 0.6f);
+
+            var logPaper = NotePaper(table, along * 0.42f + Vector3.up * (top + 0.003f), 25f);
             transmission = logPaper.AddComponent<JournalNote>();
             transmission.Configure("Recovered Transmission",
                 "[AUTO-PRINT  -  BUFFERED TRANSMISSION  -  RECEIVED 3 DAYS AGO]\n\n" +
@@ -463,7 +598,7 @@ namespace Beyond.EditorTools
                 "IF WE DO NOT CHECK IN WITHIN 48 HOURS... SEND NO ONE.\n\n[END OF BUFFER]");
             logPaper.transform.SetParent(gameplay, true);
 
-            var campNote = NotePaper(table, new Vector3(-0.55f, 0.81f, 0.1f), -10f);
+            var campNote = NotePaper(table, along * -0.4f + Vector3.up * (top + 0.003f) + Vector3.Cross(Vector3.up, along) * 0.15f, -10f);
             campNote.AddComponent<JournalNote>().Configure("Camp Log - Radio",
                 "Day 22.\n\nHale stripped the radio for his receiver experiment. To get the transmitter working again you need:\n\n" +
                 "  -  3 x Copper Wire (spools were packed in the supply crates)\n" +
@@ -472,17 +607,17 @@ namespace Beyond.EditorTools
                 "Hale and Ilves left at dawn toward the coordinates. I'm staying with the camp.\n\n-  R. Okafor");
             campNote.transform.SetParent(gameplay, true);
 
+            PlaceProp("portable_generator", "Generator", camp, Camp + new Vector2(7.6f, -5.4f), 200f);
+
             var supplies = Anchor("Camp Supplies", camp, Camp + new Vector2(3f, 7f), 200f);
-            Crate("Supply Crate", supplies, gameplay, new List<ItemStack>
+            LootProp("Supply Crate", MilitaryCrate(), supplies, new List<ItemStack>
             {
                 new ItemStack(items["copper_wire"], 1), new ItemStack(items["scrap_metal"], 2)
-            }, false);
-            var metal = Mat("Barrel", new Color(0.2f, 0.32f, 0.42f), 0.35f, 0.6f);
+            }, new Vector3(110f, 0f, 0f));
             for (int i = 0; i < 3; i++)
-            {
-                var b = Anchor("Barrel", camp, Camp + new Vector2(4.8f + i * 0.75f, 8.2f - i * 0.3f), Rand(0f, 360f), 0.45f);
-                Primitive(PrimitiveType.Cylinder, "Body", b, Vector3.zero, new Vector3(0.6f, 0.45f, 0.6f), metal, null, true);
-            }
+                PlaceProp("barrel_03", "Barrel", camp, Camp + new Vector2(4.9f + i * 0.72f, 8.3f - i * 0.28f), Rand(0f, 360f));
+            PlaceProp("metal_jerrycan_green", "Jerrycan", camp, Camp + new Vector2(2.2f, 8.4f), 15f);
+            PlaceProp("metal_jerrycan_green", "Jerrycan", camp, Camp + new Vector2(1.7f, 8.0f), 40f);
 
             var mast = Anchor("Antenna Mast", camp, Camp + new Vector2(9f, 1f), 0f);
             var steel = Mat("Steel", new Color(0.6f, 0.62f, 0.64f), 0.5f, 0.85f);
@@ -499,6 +634,7 @@ namespace Beyond.EditorTools
             beaconLight.range = 18f;
             beacon.AddComponent<LightAnimator>().Configure(LightAnimator.Mode.Blink, beaconLight, beacon.GetComponent<Renderer>(), beaconGlow, 0.7f);
 
+            Pickup(items["field_jacket"], 1, OnGround(Camp + new Vector2(-2.46f, -0.43f), 0.2f), 80f, gameplay);
             var badge = Pickup(items["meridian_badge"], 1, OnGround(Camp + new Vector2(-1.4f, 1.6f)), 30f, gameplay);
             badge.name = "Pickup_Insignia";
 
@@ -514,51 +650,60 @@ namespace Beyond.EditorTools
             return camp.gameObject;
         }
 
-        static RepairableDevice BuildRadio(Transform table)
+        static RepairableDevice BuildRadio(Transform table, float top)
         {
-            var root = new GameObject("Field Radio");
-            root.transform.SetParent(table, false);
-            root.transform.localPosition = new Vector3(0f, 0.805f, 0.05f);
+            var prop = PropLibrary.Load("vintage_radio_transceiver");
+            var root = PropLibrary.Spawn(prop, "Field Radio", table, false);
+            root.transform.localPosition = Vector3.up * top;
+            root.transform.localRotation = Quaternion.identity;
+            float h = prop.bounds.size.y;
 
-            var casing = Mat("Radio Casing", new Color(0.24f, 0.27f, 0.2f), 0.3f, 0.2f);
-            var panel = Mat("Radio Panel", new Color(0.08f, 0.08f, 0.08f), 0.5f);
-            var knob = Mat("Radio Knob", new Color(0.7f, 0.7f, 0.7f), 0.6f, 0.9f);
-            Primitive(PrimitiveType.Cube, "Body", root.transform, new Vector3(0f, 0.17f, 0f), new Vector3(0.55f, 0.34f, 0.32f), casing);
-            Primitive(PrimitiveType.Cube, "Panel", root.transform, new Vector3(0f, 0.17f, -0.161f), new Vector3(0.5f, 0.28f, 0.01f), panel);
-            for (int i = 0; i < 3; i++)
-                Primitive(PrimitiveType.Cylinder, "Knob", root.transform, new Vector3(-0.15f + i * 0.15f, 0.1f, -0.175f),
-                    new Vector3(0.05f, 0.012f, 0.05f), knob, Quaternion.Euler(90f, 0f, 0f));
-            Primitive(PrimitiveType.Cylinder, "Antenna", root.transform, new Vector3(0.22f, 0.6f, 0.1f), new Vector3(0.012f, 0.28f, 0.012f), knob);
-            Primitive(PrimitiveType.Cube, "Open Hatch", root.transform, new Vector3(0f, 0.36f, -0.05f), new Vector3(0.5f, 0.01f, 0.2f), casing,
-                Quaternion.Euler(-35f, 0f, 0f));
-
-            var fault = Primitive(PrimitiveType.Sphere, "Fault Lamp", root.transform, new Vector3(0.18f, 0.25f, -0.166f), Vector3.one * 0.03f,
+            var fault = Primitive(PrimitiveType.Sphere, "Fault Lamp", root.transform, new Vector3(0f, h + 0.015f, 0f), Vector3.one * 0.035f,
                 Mat("Lamp Red", new Color(0.3f, 0.02f, 0.02f), 0.7f, 0f, new Color(3f, 0.1f, 0.05f)));
-            var ok = Primitive(PrimitiveType.Sphere, "Power Lamp", root.transform, new Vector3(0.18f, 0.25f, -0.166f), Vector3.one * 0.03f,
+            var ok = Primitive(PrimitiveType.Sphere, "Power Lamp", root.transform, new Vector3(0f, h + 0.015f, 0f), Vector3.one * 0.035f,
                 Mat("Lamp Green", new Color(0.02f, 0.3f, 0.05f), 0.7f, 0f, new Color(0.2f, 3f, 0.4f)));
-            var dial = Primitive(PrimitiveType.Cube, "Dial Glow", root.transform, new Vector3(-0.05f, 0.24f, -0.167f), new Vector3(0.22f, 0.06f, 0.005f),
-                Mat("Dial Glow", new Color(0.3f, 0.25f, 0.1f), 0.7f, 0f, new Color(2.2f, 1.4f, 0.4f)));
             var glow = new GameObject("Radio Glow").AddComponent<Light>();
-            glow.transform.SetParent(ok.transform.parent, false);
-            glow.transform.localPosition = new Vector3(0f, 0.25f, -0.4f);
+            glow.transform.SetParent(root.transform, false);
+            glow.transform.localPosition = new Vector3(0f, h * 0.6f, -0.35f);
             glow.type = LightType.Point;
             glow.color = new Color(1f, 0.8f, 0.45f);
             glow.intensity = 1.2f;
             glow.range = 2.5f;
             ok.SetActive(false);
-            dial.SetActive(false);
             glow.gameObject.SetActive(false);
 
             var col = root.AddComponent<BoxCollider>();
-            col.center = new Vector3(0f, 0.2f, 0f);
-            col.size = new Vector3(0.7f, 0.5f, 0.45f);
+            col.center = prop.bounds.center;
+            col.size = prop.bounds.size + new Vector3(0.1f, 0.1f, 0.1f);
 
             var device = root.AddComponent<RepairableDevice>();
             device.Configure("Field Radio", new List<ItemStack>
             {
                 new ItemStack(items["copper_wire"], 3), new ItemStack(items["battery_cell"], 1), new ItemStack(items["circuit_board"], 1)
-            }, new[] { ok, dial, glow.gameObject }, new[] { fault });
+            }, new[] { ok, glow.gameObject }, new[] { fault });
             return device;
+        }
+
+        static PropLibrary.PropMesh MilitaryCrate() =>
+            PropLibrary.Load("old_military_crate", n => n.EndsWith("_a"), n => n.Contains("lid"), "_a");
+
+        static GameObject PlaceProp(string asset, string name, Transform parent, Vector2 p, float yaw)
+        {
+            var go = PropLibrary.Spawn(PropLibrary.Load(asset), name, parent);
+            go.transform.SetPositionAndRotation(OnGround(p, -0.01f), Quaternion.Euler(0f, yaw, 0f));
+            go.isStatic = true;
+            return go;
+        }
+
+        static LootContainer LootProp(string displayName, PropLibrary.PropMesh prop, Transform anchor, List<ItemStack> contents, Vector3 openEuler)
+        {
+            var go = PropLibrary.Spawn(prop, displayName, anchor, out var hinge);
+            var loot = go.AddComponent<LootContainer>();
+            loot.Configure(displayName, hinge, contents);
+            var so = new SerializedObject(loot);
+            so.FindProperty("lidOpenEuler").vector3Value = openEuler;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return loot;
         }
 
         static Mesh TentMesh(float width, float height, float length)
@@ -598,30 +743,6 @@ namespace Beyond.EditorTools
             return mb.Build("Tent_AFrame");
         }
 
-        static LootContainer Crate(string displayName, Transform anchor, Transform gameplay, List<ItemStack> contents, bool small)
-        {
-            var root = new GameObject(displayName);
-            root.transform.SetParent(anchor, false);
-            Vector3 size = small ? new Vector3(0.7f, 0.32f, 0.45f) : new Vector3(0.95f, 0.5f, 0.6f);
-            var body = small ? Mat("Case Plastic", new Color(0.12f, 0.14f, 0.13f), 0.45f) : Mat("Crate Wood", new Color(0.5f, 0.4f, 0.26f), 0.15f);
-            var trim = Mat("Crate Trim", new Color(0.35f, 0.36f, 0.37f), 0.4f, 0.7f);
-
-            Primitive(PrimitiveType.Cube, "Body", root.transform, new Vector3(0f, size.y * 0.5f, 0f), size, body);
-            Primitive(PrimitiveType.Cube, "Band", root.transform, new Vector3(0f, size.y * 0.5f, 0f), new Vector3(size.x + 0.02f, 0.05f, size.z + 0.02f), trim);
-            var hinge = new GameObject("Lid Hinge").transform;
-            hinge.SetParent(root.transform, false);
-            hinge.localPosition = new Vector3(0f, size.y, size.z * 0.5f);
-            Primitive(PrimitiveType.Cube, "Lid", hinge, new Vector3(0f, 0.03f, -size.z * 0.5f), new Vector3(size.x + 0.03f, 0.06f, size.z + 0.03f), body);
-
-            var col = root.AddComponent<BoxCollider>();
-            col.center = new Vector3(0f, size.y * 0.5f + 0.03f, 0f);
-            col.size = size + new Vector3(0.03f, 0.06f, 0.03f);
-
-            var loot = root.AddComponent<LootContainer>();
-            loot.Configure(displayName, hinge, contents);
-            return loot;
-        }
-
         static GameObject NotePaper(Transform parent, Vector3 localPos, float yaw)
         {
             var paper = Primitive(PrimitiveType.Cube, "Note", parent, localPos, new Vector3(0.21f, 0.004f, 0.29f),
@@ -657,6 +778,17 @@ namespace Beyond.EditorTools
                     break;
                 case "meridian_badge":
                     Primitive(PrimitiveType.Cylinder, "Badge", root.transform, new Vector3(0f, 0.01f, 0f), new Vector3(0.1f, 0.006f, 0.1f), mat);
+                    break;
+                case "leather_boots":
+                    Primitive(PrimitiveType.Cube, "Boot L", root.transform, new Vector3(-0.08f, 0.07f, 0f), new Vector3(0.11f, 0.14f, 0.28f), mat);
+                    Primitive(PrimitiveType.Cube, "Boot R", root.transform, new Vector3(0.08f, 0.07f, 0.02f), new Vector3(0.11f, 0.14f, 0.28f), mat,
+                        Quaternion.Euler(0f, 12f, 0f));
+                    break;
+                case "field_jeans":
+                case "field_jacket":
+                    Primitive(PrimitiveType.Cube, "Folded", root.transform, new Vector3(0f, 0.045f, 0f), new Vector3(0.42f, 0.09f, 0.32f), mat);
+                    Primitive(PrimitiveType.Cube, "Fold", root.transform, new Vector3(0f, 0.1f, -0.02f), new Vector3(0.4f, 0.03f, 0.26f), mat,
+                        Quaternion.Euler(0f, 4f, 0f));
                     break;
                 default:
                     Primitive(PrimitiveType.Cube, "Board", root.transform, new Vector3(0f, 0.02f, 0f), new Vector3(0.22f, 0.02f, 0.16f), mat);
@@ -713,20 +845,20 @@ namespace Beyond.EditorTools
                 "-  R. Okafor, Logistics");
             notice.transform.SetParent(gameplay, true);
 
+            Pickup(items["leather_boots"], 1, OnGround(start + new Vector2(-1.8f, 3.6f)), 140f, gameplay);
             Pickup(items["copper_wire"], 1, OnGround(TrailSide(1, 3f)), 40f, gameplay);
             Pickup(items["scrap_metal"], 1, OnGround(TrailSide(2, -2.6f)), 10f, gameplay);
 
             Vector2 drop = TrailSide(3, 10f);
             clearings.Add((drop, 6f));
             var dropAnchor = Anchor("Abandoned Supply Drop", world, drop, 160f);
-            Crate("Supply Crate", dropAnchor, gameplay, new List<ItemStack>
+            LootProp("Supply Crate", MilitaryCrate(), dropAnchor, new List<ItemStack>
             {
-                new ItemStack(items["copper_wire"], 1), new ItemStack(items["scrap_metal"], 3)
-            }, false);
-            var pack = Anchor("Backpack", dropAnchor, Vector2.zero, 0f);
-            pack.position = OnGround(drop + new Vector2(1.3f, -0.6f), 0.12f);
-            pack.rotation = Quaternion.Euler(80f, 40f, 0f);
-            Primitive(PrimitiveType.Cube, "Pack", pack, Vector3.zero, new Vector3(0.38f, 0.5f, 0.22f), Mat("Backpack", new Color(0.55f, 0.18f, 0.12f), 0.2f), null, true);
+                new ItemStack(items["copper_wire"], 1), new ItemStack(items["scrap_metal"], 3), new ItemStack(items["field_jeans"], 1)
+            }, new Vector3(110f, 0f, 0f));
+            var dropped = PropLibrary.Spawn(PropLibrary.Load("vintage_suitcase", n => n.Contains("_02"), null, "_02"), "Abandoned Case", dropAnchor);
+            dropped.transform.SetPositionAndRotation(OnGround(drop + new Vector2(1.4f, -0.7f), -0.02f), Quaternion.Euler(0f, 62f, 0f));
+            PlaceProp("metal_jerrycan_green", "Jerrycan", dropAnchor, drop + new Vector2(-1.2f, 0.9f), 120f);
             var journal = NotePaper(dropAnchor, Vector3.zero, 0f);
             journal.transform.position = OnGround(drop + new Vector2(0.9f, -1.3f), 0.02f);
             journal.transform.rotation = Quaternion.Euler(0f, 70f, 0f);
@@ -761,36 +893,48 @@ namespace Beyond.EditorTools
         {
             var forest = new GameObject("Forest").transform;
             forest.SetParent(world, false);
-            var barkTex = BuilderAssets.LoadTexture($"{BuilderAssets.PolyHaven}/Models/dead_tree_trunk/dead_tree_trunk_diff.jpg", false);
-            var barkNor = BuilderAssets.LoadTexture($"{BuilderAssets.PolyHaven}/Models/dead_tree_trunk/dead_tree_trunk_nor_gl.jpg", true);
-            var bark = BuilderAssets.Lit("Pine Bark", new Color(0.75f, 0.68f, 0.6f), 0.1f, 0f, barkTex, barkNor);
-            var needles = new[]
-            {
-                Mat("Pine Needles A", new Color(0.11f, 0.2f, 0.1f), 0.12f),
-                Mat("Pine Needles B", new Color(0.14f, 0.23f, 0.11f), 0.12f),
-                Mat("Pine Needles C", new Color(0.09f, 0.17f, 0.11f), 0.12f)
-            };
-            var meshes = new[] { PineMesh(11), PineMesh(23), PineMesh(37), PineMesh(41) };
+            var bark = FoliageBuilder.BarkMaterial();
+            var needles = FoliageBuilder.NeedleMaterials();
+            var core = FoliageBuilder.CoreMaterial();
+            var meshes = new[] { FoliageBuilder.FirTree(11), FoliageBuilder.FirTree(23), FoliageBuilder.FirTree(37), FoliageBuilder.FirTree(41), FoliageBuilder.FirTree(53) };
 
             int placed = 0;
-            for (int attempt = 0; attempt < 6000 && placed < 650; attempt++)
+            for (int attempt = 0; attempt < 9000 && placed < 640; attempt++)
             {
                 var p = new Vector2(Rand(6f, Size - 6f), Rand(6f, Size - 6f));
                 float trailD = TrailDistance(p.x, p.y);
-                if (trailD < 5.5f || InClearing(p)) continue;
-                if (Steepness(p) > 32f) continue;
+                if (trailD < 5f || InClearing(p)) continue;
+                if (Steepness(p) > 40f) continue;
                 float density = Mathf.PerlinNoise(p.x * 0.02f + 40f, p.y * 0.02f + 90f);
-                if (trailD < 14f) density *= 0.55f;
-                if (rng.NextDouble() > density * 1.25f) continue;
+                if (trailD < 14f) density *= 0.6f;
+                if (rng.NextDouble() > density * 1.3f) continue;
 
-                float scale = Rand(0.75f, 1.3f);
-                var t = MeshObject("Pine", forest, meshes[rng.Next(meshes.Length)], new[] { bark, needles[rng.Next(needles.Length)] }, false);
-                t.transform.SetPositionAndRotation(OnGround(p, -0.2f), Quaternion.Euler(Rand(-3f, 3f), Rand(0f, 360f), Rand(-3f, 3f)));
-                t.transform.localScale = new Vector3(scale, scale * Rand(0.9f, 1.15f), scale);
+                float scale = Rand(0.75f, 1.25f);
+                var t = MeshObject("Fir", forest, meshes[rng.Next(meshes.Length)], new[] { bark, needles[rng.Next(needles.Length)], core }, false);
+                t.transform.SetPositionAndRotation(OnGround(p, -0.15f), Quaternion.Euler(Rand(-2f, 2f), Rand(0f, 360f), Rand(-2f, 2f)));
+                t.transform.localScale = new Vector3(scale, scale * Rand(0.92f, 1.12f), scale);
                 var cap = t.AddComponent<CapsuleCollider>();
-                cap.radius = 0.35f;
+                cap.radius = 0.32f;
                 cap.height = 6f;
                 cap.center = new Vector3(0f, 3f, 0f);
+                placed++;
+            }
+        }
+
+        static void BuildUndergrowth(Transform world)
+        {
+            var root = new GameObject("Undergrowth").transform;
+            root.SetParent(world, false);
+            var shrubMeshes = BuilderAssets.ModelMeshes("shrub_02");
+            var shrubMat = FoliageBuilder.ShrubMaterial();
+            int placed = 0;
+            for (int attempt = 0; attempt < 2000 && placed < 45 && shrubMeshes.Length > 0; attempt++)
+            {
+                var p = new Vector2(Rand(10f, Size - 10f), Rand(10f, Size - 10f));
+                float trailD = TrailDistance(p.x, p.y);
+                if (trailD < 3.5f || InClearing(p, -1f) || Steepness(p) > 30f) continue;
+                if (Mathf.PerlinNoise(p.x * 0.02f + 40f, p.y * 0.02f + 90f) < 0.45f) continue;
+                PlaceModel("Shrub", root, shrubMeshes[0], shrubMat, p, Rand(0f, 360f), Rand(0.7f, 1.3f), 0.05f, false);
                 placed++;
             }
         }
@@ -883,7 +1027,7 @@ namespace Beyond.EditorTools
 
             var cc = player.AddComponent<CharacterController>();
             cc.height = 1.8f;
-            cc.radius = 0.32f;
+            cc.radius = 0.3f;
             cc.center = new Vector3(0f, 0.9f, 0f);
             cc.slopeLimit = 46f;
             cc.stepOffset = 0.4f;
@@ -891,51 +1035,50 @@ namespace Beyond.EditorTools
 
             player.AddComponent<PlayerInputReader>();
             player.AddComponent<Inventory>();
-            var motor = player.AddComponent<PlayerMotor>();
+            player.AddComponent<PlayerMotor>();
             var rig = player.AddComponent<PlayerCameraRig>();
             player.AddComponent<Interactor>();
+            var wardrobe = player.AddComponent<Wardrobe>();
 
-            var body = new GameObject("Body").transform;
-            body.SetParent(player.transform, false);
-            var torso = new GameObject("Torso").transform;
-            torso.SetParent(body, false);
-
-            var jacket = Mat("Explorer Jacket", new Color(0.55f, 0.47f, 0.32f), 0.2f);
-            var pants = Mat("Explorer Pants", new Color(0.2f, 0.22f, 0.2f), 0.15f);
-            var skin = Mat("Explorer Skin", new Color(0.72f, 0.53f, 0.42f), 0.35f);
-            var boots = Mat("Explorer Boots", new Color(0.16f, 0.11f, 0.08f), 0.3f);
-            var pack = Mat("Explorer Pack", new Color(0.25f, 0.32f, 0.36f), 0.2f);
-
-            Primitive(PrimitiveType.Cube, "Hips", torso, new Vector3(0f, 0.98f, 0f), new Vector3(0.38f, 0.2f, 0.24f), pants);
-            Primitive(PrimitiveType.Cube, "Chest", torso, new Vector3(0f, 1.32f, 0f), new Vector3(0.46f, 0.56f, 0.26f), jacket);
-            Primitive(PrimitiveType.Cube, "Neck", torso, new Vector3(0f, 1.62f, 0f), new Vector3(0.1f, 0.08f, 0.1f), skin);
-            Primitive(PrimitiveType.Sphere, "Head", torso, new Vector3(0f, 1.74f, 0f), new Vector3(0.22f, 0.25f, 0.23f), skin);
-            Primitive(PrimitiveType.Cube, "Cap", torso, new Vector3(0f, 1.83f, 0.03f), new Vector3(0.24f, 0.07f, 0.28f), pack);
-            Primitive(PrimitiveType.Cube, "Backpack", torso, new Vector3(0f, 1.32f, -0.22f), new Vector3(0.38f, 0.48f, 0.2f), pack);
-
-            Transform Limb(string name, Transform parent, Vector3 pivot, Vector3 size, Material mat, Material end)
+            var modelAsset = ExplorerCharacter.Import();
+            var model = (GameObject)PrefabUtility.InstantiatePrefab(modelAsset);
+            PrefabUtility.UnpackPrefabInstance(model, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+            model.name = "Explorer";
+            model.transform.SetParent(player.transform, false);
+            model.transform.localPosition = Vector3.zero;
+            model.transform.localRotation = Quaternion.identity;
+            var bounds = new Bounds(model.transform.position, Vector3.zero);
+            foreach (var r in model.GetComponentsInChildren<Renderer>(true)) bounds.Encapsulate(r.bounds);
+            float height = bounds.size.y;
+            if (height > 0.5f) model.transform.localScale = Vector3.one * (1.78f / height);
+            model.AddComponent<HumanoidLocomotion>();
+            foreach (var smr in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                var p = new GameObject(name).transform;
-                p.SetParent(parent, false);
-                p.localPosition = pivot;
-                Primitive(PrimitiveType.Cube, name + " Mesh", p, new Vector3(0f, -size.y * 0.5f, 0f), size, mat);
-                Primitive(PrimitiveType.Cube, name + " End", p, new Vector3(0f, -size.y + 0.04f, end == boots ? 0.04f : 0f),
-                    end == boots ? new Vector3(size.x + 0.02f, 0.1f, size.z + 0.1f) : new Vector3(size.x * 0.8f, 0.1f, size.z * 0.8f), end);
-                return p;
+                smr.updateWhenOffscreen = true;
+                smr.shadowCastingMode = ShadowCastingMode.On;
             }
 
-            var lArm = Limb("Left Arm", torso, new Vector3(-0.3f, 1.56f, 0f), new Vector3(0.13f, 0.62f, 0.14f), jacket, skin);
-            var rArm = Limb("Right Arm", torso, new Vector3(0.3f, 1.56f, 0f), new Vector3(0.13f, 0.62f, 0.14f), jacket, skin);
-            var lLeg = Limb("Left Leg", body, new Vector3(-0.1f, 0.92f, 0f), new Vector3(0.16f, 0.9f, 0.18f), pants, boots);
-            var rLeg = Limb("Right Leg", body, new Vector3(0.1f, 0.92f, 0f), new Vector3(0.16f, 0.9f, 0.18f), pants, boots);
+            GameObject Part(string name)
+            {
+                foreach (var t in model.GetComponentsInChildren<Transform>(true))
+                    if (t.name == name) return t.gameObject;
+                return null;
+            }
 
-            body.gameObject.AddComponent<ProceduralBodyAnimator>().Configure(lLeg, rLeg, lArm, rArm, torso);
+            wardrobe.Configure(new List<Wardrobe.Garment>
+            {
+                new Wardrobe.Garment { item = items["leather_boots"], show = new[] { Part("Outfit_Boots") }, hide = new[] { Part("Body_Feet") } },
+                new Wardrobe.Garment { item = items["field_jeans"], show = new[] { Part("Outfit_Jeans") }, hide = new[] { Part("Underwear_Briefs") } },
+                new Wardrobe.Garment { item = items["field_jacket"], show = new[] { Part("Outfit_Jacket") }, hide = new[] { Part("Underwear_Undershirt") } }
+            });
+            foreach (var n in new[] { "Outfit_Boots", "Outfit_Jeans", "Outfit_Jacket" })
+            {
+                var go = Part(n);
+                if (go != null) go.SetActive(false);
+            }
 
             foreach (var t in player.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = IgnoreRaycastLayer;
 
-            var motorSo = new SerializedObject(motor);
-            motorSo.FindProperty("bodyVisual").objectReferenceValue = body;
-            motorSo.ApplyModifiedPropertiesWithoutUndo();
             var rigSo = new SerializedObject(rig);
             rigSo.FindProperty("cameraTransform").objectReferenceValue = cam.transform;
             rigSo.ApplyModifiedPropertiesWithoutUndo();

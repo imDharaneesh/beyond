@@ -241,6 +241,7 @@ namespace Beyond.UI
             ItemCategory.Resource => "RESOURCES",
             ItemCategory.Component => "COMPONENTS",
             ItemCategory.Tool => "TOOLS",
+            ItemCategory.Clothing => "CLOTHING",
             _ => "ARTIFACTS",
         };
 

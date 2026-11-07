@@ -349,7 +349,7 @@ namespace Beyond.EditorTools
             {
                 Detail(FoliageBuilder.DetailPrefab("Detail_GrassA", FoliageBuilder.GrassClump(3, false), grassA), 0.8f, 1.3f),
                 Detail(FoliageBuilder.DetailPrefab("Detail_GrassB", FoliageBuilder.GrassClump(8, false), grassB), 0.8f, 1.25f),
-                Detail(FoliageBuilder.DetailPrefab("Detail_GrassTall", FoliageBuilder.GrassClump(5, true), grassA), 0.75f, 1.2f),
+                Detail(FoliageBuilder.DetailPrefab("Detail_GrassTall", FoliageBuilder.GrassClump(13, false), grassA), 0.75f, 1.2f),
                 Detail(FoliageBuilder.DetailPrefab("Detail_FernA", FoliageBuilder.Fern(2), fern), 0.7f, 1.3f),
                 Detail(FoliageBuilder.DetailPrefab("Detail_FernB", FoliageBuilder.Fern(9), fern), 0.7f, 1.2f)
             };
@@ -1051,7 +1051,18 @@ namespace Beyond.EditorTools
             foreach (var r in model.GetComponentsInChildren<Renderer>(true)) bounds.Encapsulate(r.bounds);
             float height = bounds.size.y;
             if (height > 0.5f) model.transform.localScale = Vector3.one * (1.78f / height);
-            model.AddComponent<HumanoidLocomotion>();
+            var mocap = MocapLibrary.Build();
+            if (mocap != null)
+            {
+                model.GetComponent<Animator>().runtimeAnimatorController = mocap.controller;
+                model.AddComponent<MocapLocomotion>();
+                var motorSo = new SerializedObject(player.GetComponent<PlayerMotor>());
+                motorSo.FindProperty("walkSpeed").floatValue = mocap.walkSpeed;
+                motorSo.FindProperty("sprintSpeed").floatValue = mocap.runSpeed;
+                motorSo.FindProperty("crouchSpeed").floatValue = mocap.creepSpeed;
+                motorSo.ApplyModifiedPropertiesWithoutUndo();
+            }
+            else Debug.LogWarning("[Beyond] Mocap clips missing; explorer will not animate.");
             foreach (var smr in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 smr.updateWhenOffscreen = true;

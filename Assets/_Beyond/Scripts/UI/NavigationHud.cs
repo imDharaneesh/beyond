@@ -201,7 +201,7 @@ namespace Beyond.UI
 
         void Scan()
         {
-            foreach (var mb in FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            foreach (var mb in FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude))
             {
                 if (!(mb is IInteractable) || markers.ContainsKey(mb)) continue;
                 markers[mb] = CreateMarker(mb);

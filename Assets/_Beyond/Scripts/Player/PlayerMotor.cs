@@ -11,7 +11,7 @@ namespace Beyond.Player
         [SerializeField] float crouchSpeed = 1.6f;
         [SerializeField] float acceleration = 10f;
         [SerializeField] float airControl = 0.3f;
-        [SerializeField] float turnSpeed = 720f;
+        [SerializeField] float turnSpeed = 460f;
 
         [Header("Jump & gravity")]
         [SerializeField] float jumpHeight = 1.1f;
@@ -43,6 +43,8 @@ namespace Beyond.Player
         bool exhausted;
         Vector3 spawnPosition;
         Quaternion spawnRotation;
+
+        public event System.Action Jumped;
 
         public bool IsGrounded => controller.isGrounded;
         public bool IsCrouching { get; private set; }
@@ -84,7 +86,10 @@ namespace Beyond.Player
 
             if (controller.isGrounded && verticalVelocity < 0f) verticalVelocity = -2f;
             if (input.JumpPressed && controller.isGrounded && !IsCrouching)
+            {
                 verticalVelocity = Mathf.Sqrt(2f * jumpHeight * -gravity);
+                Jumped?.Invoke();
+            }
             verticalVelocity += gravity * dt;
 
             controller.Move((planarVelocity + Vector3.up * verticalVelocity) * dt);

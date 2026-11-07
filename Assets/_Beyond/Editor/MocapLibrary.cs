@@ -8,7 +8,7 @@ namespace Beyond.EditorTools
 {
     public static class MocapLibrary
     {
-        const string Dir = BuilderAssets.Root + "/Art/Animations/Mocap";
+        const string Dir = BuilderAssets.Root + "/Art/Animations/Explorer";
         const string ControllerPath = BuilderAssets.Generated + "/Animation/Explorer.controller";
 
         struct ClipSpec
@@ -22,12 +22,12 @@ namespace Beyond.EditorTools
 
         static readonly ClipSpec[] Specs =
         {
-            new ClipSpec { file = "77_02", name = "Idle", first = 320, last = 914, loop = true, fallbackSpeed = 0f, timeScale = 1f },
-            new ClipSpec { file = "16_15", name = "Walk", first = 62, last = 199, loop = true, fallbackSpeed = 1.1f, timeScale = 1.25f },
-            new ClipSpec { file = "16_36", name = "Jog", first = 52, last = 146, loop = true, fallbackSpeed = 2.68f, timeScale = 1.12f },
-            new ClipSpec { file = "09_06", name = "Run", first = 48, last = 137, loop = true, fallbackSpeed = 3.63f, timeScale = 1.3f },
-            new ClipSpec { file = "77_29", name = "Creep", first = 767, last = 928, loop = true, fallbackSpeed = 0.9f, timeScale = 1f },
-            new ClipSpec { file = "13_39", name = "Jump", first = 150, last = 236, loop = false, fallbackSpeed = 0f, timeScale = 1f }
+            new ClipSpec { file = "82_08", name = "Idle", first = 0, last = 240, loop = true, fallbackSpeed = 0f, timeScale = 1f },
+            new ClipSpec { file = "16_15", name = "Walk", first = 0, last = 137, loop = true, fallbackSpeed = 1.1f, timeScale = 1.25f },
+            new ClipSpec { file = "16_36", name = "Jog", first = 0, last = 94, loop = true, fallbackSpeed = 2.68f, timeScale = 1.12f },
+            new ClipSpec { file = "09_06", name = "Run", first = 0, last = 89, loop = true, fallbackSpeed = 3.63f, timeScale = 1.3f },
+            new ClipSpec { file = "77_29", name = "Creep", first = 0, last = 161, loop = true, fallbackSpeed = 0.9f, timeScale = 1f },
+            new ClipSpec { file = "13_39", name = "Jump", first = 0, last = 86, loop = false, fallbackSpeed = 0f, timeScale = 1f }
         };
 
         public class Result
@@ -137,10 +137,11 @@ namespace Beyond.EditorTools
 
         static AnimationClip ImportClip(ClipSpec spec)
         {
-            string path = $"{Dir}/Mocap_{spec.file}.fbx";
+            string path = $"{Dir}/Explorer_{spec.name}.fbx";
             var importer = AssetImporter.GetAtPath(path) as ModelImporter;
             if (importer == null) return null;
             importer.animationType = ModelImporterAnimationType.Human;
+            importer.sourceAvatar = null;
             importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
             importer.materialImportMode = ModelImporterMaterialImportMode.None;
             importer.importAnimation = true;

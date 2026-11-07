@@ -16,6 +16,27 @@ namespace Beyond.Player
         [SerializeField] float pelvisSmoothing = 12f;
         [SerializeField] float rootClearance = 0.0f;
 
+        [SerializeField] float fingerRelax = 0.7f;
+        [SerializeField] float lookBodyWeight = 0.3f;
+        [SerializeField] float lookHeadWeight = 0.85f;
+
+        static readonly HumanBodyBones[] Fingers =
+        {
+            HumanBodyBones.LeftThumbProximal, HumanBodyBones.LeftThumbIntermediate, HumanBodyBones.LeftThumbDistal,
+            HumanBodyBones.LeftIndexProximal, HumanBodyBones.LeftIndexIntermediate, HumanBodyBones.LeftIndexDistal,
+            HumanBodyBones.LeftMiddleProximal, HumanBodyBones.LeftMiddleIntermediate, HumanBodyBones.LeftMiddleDistal,
+            HumanBodyBones.LeftRingProximal, HumanBodyBones.LeftRingIntermediate, HumanBodyBones.LeftRingDistal,
+            HumanBodyBones.LeftLittleProximal, HumanBodyBones.LeftLittleIntermediate, HumanBodyBones.LeftLittleDistal,
+            HumanBodyBones.RightThumbProximal, HumanBodyBones.RightThumbIntermediate, HumanBodyBones.RightThumbDistal,
+            HumanBodyBones.RightIndexProximal, HumanBodyBones.RightIndexIntermediate, HumanBodyBones.RightIndexDistal,
+            HumanBodyBones.RightMiddleProximal, HumanBodyBones.RightMiddleIntermediate, HumanBodyBones.RightMiddleDistal,
+            HumanBodyBones.RightRingProximal, HumanBodyBones.RightRingIntermediate, HumanBodyBones.RightRingDistal,
+            HumanBodyBones.RightLittleProximal, HumanBodyBones.RightLittleIntermediate, HumanBodyBones.RightLittleDistal
+        };
+
+        [SerializeField, HideInInspector] Transform[] fingerBones;
+        [SerializeField, HideInInspector] Quaternion[] fingerRest;
+
         Animator animator;
         PlayerMotor motor;
         Transform body;
@@ -30,6 +51,27 @@ namespace Beyond.Player
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             motor = GetComponentInParent<PlayerMotor>();
             body = transform.parent != null ? transform.parent : transform;
+            if (fingerBones == null || fingerBones.Length != Fingers.Length) CaptureFingerRest();
+        }
+
+        public void CaptureFingerRest()
+        {
+            if (animator == null) animator = GetComponent<Animator>();
+            fingerBones = new Transform[Fingers.Length];
+            fingerRest = new Quaternion[Fingers.Length];
+            for (int i = 0; i < Fingers.Length; i++)
+            {
+                fingerBones[i] = animator.GetBoneTransform(Fingers[i]);
+                if (fingerBones[i] != null) fingerRest[i] = fingerBones[i].localRotation;
+            }
+        }
+
+        void LateUpdate()
+        {
+            if (fingerBones == null) return;
+            for (int i = 0; i < fingerBones.Length; i++)
+                if (fingerBones[i] != null)
+                    fingerBones[i].localRotation = Quaternion.Slerp(fingerBones[i].localRotation, fingerRest[i], fingerRelax);
         }
 
         void OnEnable()
@@ -77,6 +119,10 @@ namespace Beyond.Player
             float wanted = grounded ? Mathf.Min(0f, Mathf.Min(lDelta, rDelta)) : 0f;
             pelvisOffset = Mathf.Lerp(pelvisOffset, wanted, 1f - Mathf.Exp(-pelvisSmoothing * dt));
             animator.bodyPosition += Vector3.up * pelvisOffset;
+
+            Vector3 look = body.position + Vector3.up * 1.62f + body.forward * 12f;
+            animator.SetLookAtWeight(1f, lookBodyWeight, lookHeadWeight, 0f, 0.55f);
+            animator.SetLookAtPosition(look);
         }
 
         float SolveFoot(AvatarIKGoal goal, bool grounded, ref float weight, float dt)

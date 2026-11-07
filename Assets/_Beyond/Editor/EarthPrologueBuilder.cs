@@ -1055,7 +1055,7 @@ namespace Beyond.EditorTools
             if (mocap != null)
             {
                 model.GetComponent<Animator>().runtimeAnimatorController = mocap.controller;
-                model.AddComponent<MocapLocomotion>();
+                model.AddComponent<MocapLocomotion>().CaptureFingerRest();
                 var motorSo = new SerializedObject(player.GetComponent<PlayerMotor>());
                 motorSo.FindProperty("walkSpeed").floatValue = mocap.walkSpeed;
                 motorSo.FindProperty("sprintSpeed").floatValue = mocap.runSpeed;

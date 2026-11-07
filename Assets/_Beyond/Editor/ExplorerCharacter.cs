@@ -85,6 +85,8 @@ namespace Beyond.EditorTools
                 return Lit("Explorer Hair", Texture($"{Tex}/Explorer_Hair_diffuse.png"), null, new Color(0.55f, 0.5f, 0.47f), 0.42f, true, 0.35f, true);
             if (n.StartsWith("Explorer_Briefs"))
                 return Fabric("Explorer Briefs", new Color(0.08f, 0.09f, 0.11f));
+            if (n.StartsWith("Explorer_Tee"))
+                return Lit("Explorer Tee", Texture($"{Tex}/Explorer_Tee_diffuse.png"), Normal($"{Tex}/Explorer_Tee_normal.png"), new Color(0.95f, 0.95f, 0.94f), 0.12f, false, 0f);
             if (n.StartsWith("Explorer_Undershirt"))
                 return Fabric("Explorer Undershirt", new Color(0.88f, 0.88f, 0.86f));
             if (n.StartsWith("Explorer_Outfit"))

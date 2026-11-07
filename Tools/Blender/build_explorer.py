@@ -470,28 +470,22 @@ cut(briefs, lambda p: max(p.z - brief_hi, (brief_lo - p.z) - 0.12 * p.y))
 finish_garment(briefs, 0.004)
 
 
-def rough_shirt(f):
-    c = sum((BL[vi] for vi, _ in f[1]), Vector((0, 0, 0))) / len(f[1])
-    return hips_z - 0.06 < c.z < neck_z + 0.04 and abs(c.x) < arm_x + 0.05
-
-
-UNDERSHIRT = material("Explorer_Undershirt", (0.86, 0.86, 0.84), 0.9)
-shirt, _ = build_mesh("Underwear_Undershirt", [f for f in body_faces if rough_shirt(f)], lambda i: BL[i], lambda t: uvs[t], UNDERSHIRT)
-arm_cx, arm_cz, arm_rx, arm_rz = arm_x + 0.035, neck_z - 0.135, 0.08, 0.115
-
-
-def tank_field(p):
-    hem = (hips_z + 0.005) - p.z
-    neck_back = p.z - (neck_z - 0.012 - 0.15 * min(0.0, p.y))
-    scoop = (1.0 - math.sqrt((p.x / 0.085) ** 2 + ((p.z - neck_z) / 0.1) ** 2)) * 0.085 if p.y < 0.0 else -1.0
-    e = math.sqrt(((abs(p.x) - arm_cx) / arm_rx) ** 2 + ((p.z - arm_cz) / arm_rz) ** 2)
-    armhole = (1.0 - e) * arm_rx
-    side = abs(p.x) - (arm_x + 0.01)
-    return max(hem, neck_back, scoop, armhole, side)
-
-
-cut(shirt, tank_field)
-finish_garment(shirt, 0.008)
+tee = fit_proxy("Tee_Suit", os.path.join(ASSETS, "clothes", "male_casualsuit06"), "male_casualsuit06", "Explorer_Tee", (0.9, 0.9, 0.9), 0.9)
+bpy.context.view_layer.objects.active = tee
+bpy.ops.object.select_all(action="DESELECT")
+tee.select_set(True)
+bpy.ops.object.mode_set(mode="EDIT")
+bpy.ops.mesh.select_all(action="SELECT")
+bpy.ops.mesh.separate(type="LOOSE")
+bpy.ops.object.mode_set(mode="OBJECT")
+tee_top, tee_rest = [], []
+for o in list(bpy.context.selected_objects):
+    zs = [v.co.z for v in o.data.vertices]
+    centre = sum(zs) / len(zs)
+    (tee_top if centre > hips_z + 0.12 or max(zs) > hips_z + 0.45 else tee_rest).append(o)
+for o in tee_rest:
+    bpy.data.objects.remove(o, do_unlink=True)
+join(tee_top, "Underwear_Undershirt")
 
 foot_z = bone_pos["mixamorig:LeftFoot"][0].z + 0.035
 bpy.ops.object.select_all(action="DESELECT")
